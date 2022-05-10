@@ -69,6 +69,15 @@ impl<'a> Binary<'a> {
     parse_impl!(le => parse_i32_le, i32);
     parse_impl!(le => parse_i64_le, i64);
     parse_impl!(le => parse_i128_le, i128);
+
+    parse_impl!(be => parse_u16_be, u16);
+    parse_impl!(be => parse_u32_be, u32);
+    parse_impl!(be => parse_u64_be, u64);
+    parse_impl!(be => parse_u128_be, u128);
+    parse_impl!(be => parse_i16_be, i16);
+    parse_impl!(be => parse_i32_be, i32);
+    parse_impl!(be => parse_i64_be, i64);
+    parse_impl!(be => parse_i128_be, i128);
 }
 
 #[cfg(test)]
