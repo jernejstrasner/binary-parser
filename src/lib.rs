@@ -44,9 +44,6 @@ impl<'a> Binary<'a> {
         self.cursor
     }
 
-    parse_impl!(le => parse_u16_le, u16);
-    parse_impl!(le => parse_u32_le, u32);
-
     pub fn parse_bytes<const N: usize>(&mut self) -> [u8; N] {
         assert!(self.cursor+N <= self.buffer.len());
         let mut buf = [0u8; N];
@@ -63,6 +60,15 @@ impl<'a> Binary<'a> {
         }
         s
     }
+
+    parse_impl!(le => parse_u16_le, u16);
+    parse_impl!(le => parse_u32_le, u32);
+    parse_impl!(le => parse_u64_le, u64);
+    parse_impl!(le => parse_u128_le, u128);
+    parse_impl!(le => parse_i16_le, i16);
+    parse_impl!(le => parse_i32_le, i32);
+    parse_impl!(le => parse_i64_le, i64);
+    parse_impl!(le => parse_i128_le, i128);
 }
 
 #[cfg(test)]
