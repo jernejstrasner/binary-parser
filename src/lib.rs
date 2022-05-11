@@ -61,6 +61,7 @@ impl<'a> Binary<'a> {
         s
     }
 
+    parse_impl!(le => parse_u8, u8);
     parse_impl!(le => parse_u16_le, u16);
     parse_impl!(le => parse_u32_le, u32);
     parse_impl!(le => parse_u64_le, u64);
