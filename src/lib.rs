@@ -52,6 +52,18 @@ impl<'a> Binary<'a> {
         buf
     }
 
+    pub fn parse_buffer(&mut self, length: usize) -> &'a [u8] {
+        assert!(self.cursor+length <= self.buffer.len());
+        let buf = &self.buffer[self.cursor..self.cursor+length];
+        self.cursor += length;
+        buf
+    }
+
+    pub fn get_buffer(&self, start: usize, length: usize) -> &'a [u8] {
+        assert!(start+length <= self.buffer.len());
+        &self.buffer[start..start+length]
+    }
+
     pub fn parse_string(&mut self, length: usize) -> Result<String, FromUtf8Error> {
         assert!(self.cursor+length <= self.buffer.len());
         let s = String::from_utf8(self.buffer[self.cursor..self.cursor+length].to_vec());
@@ -61,7 +73,6 @@ impl<'a> Binary<'a> {
         s
     }
 
-    parse_impl!(le => parse_u8, u8);
     parse_impl!(le => parse_u16_le, u16);
     parse_impl!(le => parse_u32_le, u32);
     parse_impl!(le => parse_u64_le, u64);
@@ -71,6 +82,7 @@ impl<'a> Binary<'a> {
     parse_impl!(le => parse_i64_le, i64);
     parse_impl!(le => parse_i128_le, i128);
 
+    parse_impl!(be => parse_u8, u8);
     parse_impl!(be => parse_u16_be, u16);
     parse_impl!(be => parse_u32_be, u32);
     parse_impl!(be => parse_u64_be, u64);
