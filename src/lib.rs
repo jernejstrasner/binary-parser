@@ -40,6 +40,11 @@ impl<'a> Binary<'a> {
         self.cursor = pos;
     }
 
+    pub fn skip(&mut self, n: usize) {
+        assert!(self.cursor+n <= self.buffer.len());
+        self.cursor += n;
+    }
+
     pub fn position(&self) -> usize {
         self.cursor
     }
