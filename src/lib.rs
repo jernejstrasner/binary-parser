@@ -73,6 +73,13 @@ impl<'a> Binary<'a> {
         s
     }
 
+    pub fn parse_u8(&mut self) -> u8 {
+        assert!(self.cursor+1 <= self.buffer.len());
+        let x = self.buffer[self.cursor];
+        self.cursor += 1;
+        x
+    }
+
     parse_impl!(le => parse_u16_le, u16);
     parse_impl!(le => parse_u32_le, u32);
     parse_impl!(le => parse_u64_le, u64);
@@ -82,7 +89,6 @@ impl<'a> Binary<'a> {
     parse_impl!(le => parse_i64_le, i64);
     parse_impl!(le => parse_i128_le, i128);
 
-    parse_impl!(be => parse_u8, u8);
     parse_impl!(be => parse_u16_be, u16);
     parse_impl!(be => parse_u32_be, u32);
     parse_impl!(be => parse_u64_be, u64);
@@ -128,4 +134,14 @@ mod tests {
         let mut bin = binary!(b"META");
         assert_eq!(bin.parse_string(4).unwrap(), "META");
     }
+
+    #[test]
+    fn parse_u8() {
+        let mut bin = binary!([0x4d, 0x45, 0x54, 0x41]);
+        assert_eq!(bin.parse_u8(), 0x4d);
+        assert_eq!(bin.parse_u8(), 0x45);
+        assert_eq!(bin.parse_u8(), 0x54);
+        assert_eq!(bin.parse_u8(), 0x41);
+    }
+
 }
