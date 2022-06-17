@@ -6,6 +6,12 @@ pub struct Binary<'a> {
     cursor: usize,
 }
 
+#[derive(Debug)]
+pub enum Error {
+    InvalidUTF8,
+    NotNullTerminated,
+}
+
 macro_rules! parse_impl {
     (le => $func:ident, $typ:tt) => {
         pub fn $func(&mut self) -> $typ {
@@ -78,6 +84,14 @@ impl<'a> Binary<'a> {
         s
     }
 
+    pub fn parse_null_terminated_string(&mut self) -> Result<String, Error> {
+        let end_pos = self.buffer.iter().skip(self.cursor).position(|&x| x == b'\0');
+        match end_pos {
+            None => Err(Error::NotNullTerminated),
+            Some(end_pos) => self.parse_string(end_pos-self.cursor).map_err(|_| Error::NotNullTerminated),
+        }
+    }
+
     pub fn parse_u8(&mut self) -> u8 {
         assert!(self.cursor+1 <= self.buffer.len());
         let x = self.buffer[self.cursor];
@@ -147,6 +161,16 @@ mod tests {
         assert_eq!(bin.parse_u8(), 0x45);
         assert_eq!(bin.parse_u8(), 0x54);
         assert_eq!(bin.parse_u8(), 0x41);
+    }
+
+    #[test]
+    fn parse_null_terminated_string() {
+        let mut bin = binary!(b"META\0");
+        assert_eq!(bin.parse_null_terminated_string().unwrap(), "META");
+        let mut bin2 = binary!(b"META\0\0MORESTUYFULL\0\0");
+        assert_eq!(bin2.parse_null_terminated_string().unwrap(), "META");
+        let mut bin3 = binary!(b"\0\0\0META\0\0MORESTUYFULL\0\0");
+        assert_eq!(bin3.parse_null_terminated_string().unwrap(), "");
     }
 
 }
