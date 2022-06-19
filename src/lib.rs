@@ -89,8 +89,11 @@ impl<'a> Binary<'a> {
         match end_pos {
             None => Err(Error::NotNullTerminated),
             Some(end_pos) => {
-                let max_pos = max_length.map(|x| cmp::min(self.cursor+x, end_pos)).unwrap_or(end_pos);
-                self.parse_string(max_pos-self.cursor).map_err(|_| Error::NotNullTerminated)
+                let max_pos = max_length.map(|x| cmp::min(x, end_pos)).unwrap_or(end_pos);
+                let str = self.parse_string(max_pos).map_err(|_| Error::NotNullTerminated);
+                // Advance the cursor past the null terminator
+                self.cursor += 1;
+                str
             }
         }
     }
@@ -172,6 +175,8 @@ mod tests {
         assert_eq!(bin.parse_null_terminated_string(None).unwrap(), "META");
         let mut bin2 = binary!(b"META\0\0MORESTUYFULL\0\0");
         assert_eq!(bin2.parse_null_terminated_string(None).unwrap(), "META");
+        assert_eq!(bin2.parse_null_terminated_string(None).unwrap(), "");
+        assert_eq!(bin2.parse_null_terminated_string(None).unwrap(), "MORESTUYFULL");
         let mut bin3 = binary!(b"\0\0\0META\0\0MORESTUYFULL\0\0");
         assert_eq!(bin3.parse_null_terminated_string(None).unwrap(), "");
     }
