@@ -1,4 +1,4 @@
-use std::string::FromUtf8Error;
+use std::{string::FromUtf8Error, cmp};
 
 #[derive(Clone)]
 pub struct Binary<'a> {
@@ -84,11 +84,14 @@ impl<'a> Binary<'a> {
         s
     }
 
-    pub fn parse_null_terminated_string(&mut self) -> Result<String, Error> {
+    pub fn parse_null_terminated_string(&mut self, max_length: Option<usize>) -> Result<String, Error> {
         let end_pos = self.buffer.iter().skip(self.cursor).position(|&x| x == b'\0');
         match end_pos {
             None => Err(Error::NotNullTerminated),
-            Some(end_pos) => self.parse_string(end_pos-self.cursor).map_err(|_| Error::NotNullTerminated),
+            Some(end_pos) => {
+                let max_pos = max_length.map(|x| cmp::min(self.cursor+x, end_pos)).unwrap_or(end_pos);
+                self.parse_string(max_pos-self.cursor).map_err(|_| Error::NotNullTerminated)
+            }
         }
     }
 
