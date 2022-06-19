@@ -169,11 +169,11 @@ mod tests {
     #[test]
     fn parse_null_terminated_string() {
         let mut bin = binary!(b"META\0");
-        assert_eq!(bin.parse_null_terminated_string().unwrap(), "META");
+        assert_eq!(bin.parse_null_terminated_string(None).unwrap(), "META");
         let mut bin2 = binary!(b"META\0\0MORESTUYFULL\0\0");
-        assert_eq!(bin2.parse_null_terminated_string().unwrap(), "META");
+        assert_eq!(bin2.parse_null_terminated_string(None).unwrap(), "META");
         let mut bin3 = binary!(b"\0\0\0META\0\0MORESTUYFULL\0\0");
-        assert_eq!(bin3.parse_null_terminated_string().unwrap(), "");
+        assert_eq!(bin3.parse_null_terminated_string(None).unwrap(), "");
     }
 
 }
