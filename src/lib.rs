@@ -1,9 +1,9 @@
-use std::{string::FromUtf8Error, cmp};
+use std::{string::FromUtf8Error, cmp, sync::{Arc, RwLock}};
 
 #[derive(Clone)]
 pub struct Binary<'a> {
     pub buffer: &'a [u8],
-    cursor: usize,
+    cursor: Arc<RwLock<usize>>
 }
 
 #[derive(Debug)]
@@ -15,19 +15,21 @@ pub enum Error {
 macro_rules! parse_impl {
     (le => $func:ident, $typ:tt) => {
         pub fn $func(&mut self) -> $typ {
-            assert!(self.cursor+std::mem::size_of::<$typ>() <= self.buffer.len());
-            let buf = &self.buffer[self.cursor..self.cursor+std::mem::size_of::<$typ>()];
+            let mut cursor = self.cursor.write().unwrap();
+            assert!(*cursor+std::mem::size_of::<$typ>() <= self.buffer.len());
+            let buf = &self.buffer[*cursor..*cursor+std::mem::size_of::<$typ>()];
             let x = $typ::from_le_bytes(buf.try_into().unwrap());
-            self.cursor += std::mem::size_of::<$typ>();
+            *cursor += std::mem::size_of::<$typ>();
             x
         }
     };
     (be => $func:ident, $typ:tt) => {
         pub fn $func(&mut self) -> $typ {
-            assert!(self.cursor+std::mem::size_of::<$typ>() <= self.buffer.len());
-            let buf = &self.buffer[self.cursor..self.cursor+std::mem::size_of::<$typ>()];
+            let mut cursor = self.cursor.write().unwrap();
+            assert!(*cursor+std::mem::size_of::<$typ>() <= self.buffer.len());
+            let buf = &self.buffer[*cursor..*cursor+std::mem::size_of::<$typ>()];
             let x = $typ::from_be_bytes(buf.try_into().unwrap());
-            self.cursor += std::mem::size_of::<$typ>();
+            *cursor += std::mem::size_of::<$typ>();
             x
         }
     };
@@ -37,36 +39,40 @@ impl<'a> Binary<'a> {
     pub fn new(buf: &'a [u8]) -> Self {
         Self {
             buffer: buf,
-            cursor: 0,
+            cursor: Arc::new(RwLock::new(0)),
         }
     }
 
     pub fn seek(&mut self, pos: usize) {
+        let mut cursor = self.cursor.write().unwrap();
         assert!(pos < self.buffer.len());
-        self.cursor = pos;
+        *cursor = pos;
     }
 
     pub fn skip(&mut self, n: usize) {
-        assert!(self.cursor+n <= self.buffer.len());
-        self.cursor += n;
+        let mut cursor = self.cursor.write().unwrap();
+        assert!(*cursor+n <= self.buffer.len());
+        *cursor += n;
     }
 
     pub fn position(&self) -> usize {
-        self.cursor
+        *self.cursor.read().unwrap()
     }
 
     pub fn parse_bytes<const N: usize>(&mut self) -> [u8; N] {
-        assert!(self.cursor+N <= self.buffer.len());
+        let mut cursor = self.cursor.write().unwrap();
+        assert!(*cursor+N <= self.buffer.len());
         let mut buf = [0u8; N];
-        buf.copy_from_slice(&self.buffer[self.cursor..self.cursor+N]);
-        self.cursor += N;
+        buf.copy_from_slice(&self.buffer[*cursor..*cursor+N]);
+        *cursor += N;
         buf
     }
 
     pub fn parse_buffer(&mut self, length: usize) -> &'a [u8] {
-        assert!(self.cursor+length <= self.buffer.len());
-        let buf = &self.buffer[self.cursor..self.cursor+length];
-        self.cursor += length;
+        let mut cursor = self.cursor.write().unwrap();
+        assert!(*cursor+length <= self.buffer.len());
+        let buf = &self.buffer[*cursor..*cursor+length];
+        *cursor += length;
         buf
     }
 
@@ -76,32 +82,37 @@ impl<'a> Binary<'a> {
     }
 
     pub fn parse_string(&mut self, length: usize) -> Result<String, FromUtf8Error> {
-        assert!(self.cursor+length <= self.buffer.len());
-        let s = String::from_utf8(self.buffer[self.cursor..self.cursor+length].to_vec());
+        let mut cursor = self.cursor.write().unwrap();
+        assert!(*cursor+length <= self.buffer.len());
+        let s = String::from_utf8(self.buffer[*cursor..*cursor+length].to_vec());
         if s.is_ok() {
-            self.cursor += length;
+            *cursor += length;
         }
         s
     }
 
     pub fn parse_null_terminated_string(&mut self, max_length: Option<usize>) -> Result<String, Error> {
-        let end_pos = self.buffer.iter().skip(self.cursor).position(|&x| x == b'\0');
+        let mut cursor = self.cursor.write().unwrap();
+        let end_pos = self.buffer.iter().skip(*cursor).position(|&x| x == b'\0');
         match end_pos {
             None => Err(Error::NotNullTerminated),
             Some(end_pos) => {
                 let max_pos = max_length.map(|x| cmp::min(x, end_pos)).unwrap_or(end_pos);
-                let str = self.parse_string(max_pos).map_err(|_| Error::NotNullTerminated);
-                // Advance the cursor past the null terminator
-                self.cursor += 1;
+                let str = String::from_utf8(self.buffer[*cursor..*cursor+max_pos].to_vec()).map_err(|_| Error::InvalidUTF8);
+                if str.is_ok() {
+                    // Advance the cursor past the null terminator
+                    *cursor += max_pos + 1;
+                }
                 str
             }
         }
     }
 
     pub fn parse_u8(&mut self) -> u8 {
-        assert!(self.cursor+1 <= self.buffer.len());
-        let x = self.buffer[self.cursor];
-        self.cursor += 1;
+        let mut cursor = self.cursor.write().unwrap();
+        assert!(*cursor+1 <= self.buffer.len());
+        let x = self.buffer[*cursor];
+        *cursor += 1;
         x
     }
 
