@@ -12,6 +12,12 @@ pub enum Error {
     NotNullTerminated,
 }
 
+pub enum ParsingLength {
+    Unlimited,
+    Fixed(usize),
+    Max(usize),
+}
+
 macro_rules! parse_impl {
     (le => $func:ident, $typ:tt) => {
         pub fn $func(&mut self) -> $typ {
@@ -84,16 +90,32 @@ impl<'a> Binary<'a> {
         s
     }
 
-    pub fn parse_null_terminated_string(&mut self, max_length: Option<usize>) -> Result<String, Error> {
+    pub fn parse_null_terminated_string(&mut self, length: ParsingLength) -> Result<String, Error> {
         let end_pos = self.buffer.iter().skip(self.cursor).position(|&x| x == b'\0');
         match end_pos {
             None => Err(Error::NotNullTerminated),
             Some(end_pos) => {
-                let max_pos = max_length.map(|x| cmp::min(x, end_pos)).unwrap_or(end_pos);
-                let str = self.parse_string(max_pos).map_err(|_| Error::NotNullTerminated);
-                // Advance the cursor past the null terminator
-                self.cursor += 1;
-                str
+                let max_pos = match length {
+                    ParsingLength::Unlimited => end_pos,
+                    ParsingLength::Fixed(length) => cmp::min(length, end_pos),
+                    ParsingLength::Max(length) => cmp::min(length, end_pos),
+                };
+                let str = String::from_utf8(self.buffer[self.cursor..self.cursor+max_pos].to_vec());
+                match (str, length) {
+                    (Ok(s), ParsingLength::Fixed(length)) => {
+                        self.cursor += length;
+                        Ok(s)
+                    }
+                    (Ok(s), ParsingLength::Max(length)) => {
+                        self.cursor += cmp::min(length, max_pos + 1);
+                        Ok(s)
+                    }
+                    (Ok(s), ParsingLength::Unlimited) => {
+                        self.cursor += max_pos + 1;
+                        Ok(s)
+                    }
+                    (Err(_), _) => Err(Error::InvalidUTF8),
+                }
             }
         }
     }
@@ -172,13 +194,13 @@ mod tests {
     #[test]
     fn parse_null_terminated_string() {
         let mut bin = binary!(b"META\0");
-        assert_eq!(bin.parse_null_terminated_string(None).unwrap(), "META");
+        assert_eq!(bin.parse_null_terminated_string(ParsingLength::Unlimited).unwrap(), "META");
         let mut bin2 = binary!(b"META\0\0MORESTUYFULL\0\0");
-        assert_eq!(bin2.parse_null_terminated_string(None).unwrap(), "META");
-        assert_eq!(bin2.parse_null_terminated_string(None).unwrap(), "");
-        assert_eq!(bin2.parse_null_terminated_string(None).unwrap(), "MORESTUYFULL");
+        assert_eq!(bin2.parse_null_terminated_string(ParsingLength::Unlimited).unwrap(), "META");
+        assert_eq!(bin2.parse_null_terminated_string(ParsingLength::Unlimited).unwrap(), "");
+        assert_eq!(bin2.parse_null_terminated_string(ParsingLength::Unlimited).unwrap(), "MORESTUYFULL");
         let mut bin3 = binary!(b"\0\0\0META\0\0MORESTUYFULL\0\0");
-        assert_eq!(bin3.parse_null_terminated_string(None).unwrap(), "");
+        assert_eq!(bin3.parse_null_terminated_string(ParsingLength::Unlimited).unwrap(), "");
     }
 
 }
