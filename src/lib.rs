@@ -47,6 +47,22 @@ impl<'a> Binary<'a> {
         }
     }
 
+    pub fn slice(&self, len: usize) -> Binary<'a> {
+        assert!(self.cursor+len <= self.buffer.len());
+        Binary {
+            buffer: &self.buffer[self.cursor..self.cursor+len],
+            cursor: 0,
+        }
+    }
+
+    pub fn length(&self) -> usize {
+        self.buffer.len()
+    }
+
+    pub fn remaining(&self) -> usize {
+        self.buffer.len() - self.cursor
+    }
+
     pub fn seek(&mut self, pos: usize) {
         assert!(pos < self.buffer.len());
         self.cursor = pos;
