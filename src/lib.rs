@@ -6,10 +6,11 @@ pub struct Binary<'a> {
     cursor: usize,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum Error {
-    InvalidUTF8,
+    InvalidUTF8(FromUtf8Error),
     NotNullTerminated,
+    BufferOverrun(usize, usize),
 }
 
 pub enum ParsingLength {
@@ -20,21 +21,25 @@ pub enum ParsingLength {
 
 macro_rules! parse_impl {
     (le => $func:ident, $typ:tt) => {
-        pub fn $func(&mut self) -> $typ {
-            assert!(self.cursor+std::mem::size_of::<$typ>() <= self.buffer.len());
+        pub fn $func(&mut self) -> Result<$typ, Error> {
+            if self.cursor+std::mem::size_of::<$typ>() > self.buffer.len() {
+                return Err(Error::BufferOverrun(self.cursor, self.buffer.len()));
+            }
             let buf = &self.buffer[self.cursor..self.cursor+std::mem::size_of::<$typ>()];
             let x = $typ::from_le_bytes(buf.try_into().unwrap());
             self.cursor += std::mem::size_of::<$typ>();
-            x
+            Ok(x)
         }
     };
     (be => $func:ident, $typ:tt) => {
-        pub fn $func(&mut self) -> $typ {
-            assert!(self.cursor+std::mem::size_of::<$typ>() <= self.buffer.len());
+        pub fn $func(&mut self) -> Result<$typ, Error> {
+            if self.cursor+std::mem::size_of::<$typ>() > self.buffer.len() {
+                return Err(Error::BufferOverrun(self.cursor, self.buffer.len()));
+            }
             let buf = &self.buffer[self.cursor..self.cursor+std::mem::size_of::<$typ>()];
             let x = $typ::from_be_bytes(buf.try_into().unwrap());
             self.cursor += std::mem::size_of::<$typ>();
-            x
+            Ok(x)
         }
     };
 }
@@ -47,12 +52,14 @@ impl<'a> Binary<'a> {
         }
     }
 
-    pub fn slice(&self, len: usize) -> Binary<'a> {
-        assert!(self.cursor+len <= self.buffer.len());
-        Binary {
+    pub fn slice(&self, len: usize) -> Result<Binary<'a>, Error> {
+        if self.cursor+len > self.buffer.len() {
+            return Err(Error::BufferOverrun(self.cursor, self.buffer.len()));
+        }
+        Ok(Binary {
             buffer: &self.buffer[self.cursor..self.cursor+len],
             cursor: 0,
-        }
+        })
     }
 
     pub fn length(&self) -> usize {
@@ -77,33 +84,43 @@ impl<'a> Binary<'a> {
         self.cursor
     }
 
-    pub fn parse_bytes<const N: usize>(&mut self) -> [u8; N] {
-        assert!(self.cursor+N <= self.buffer.len());
+    pub fn parse_bytes<const N: usize>(&mut self) -> Result<[u8; N], Error> {
+        if self.cursor+N > self.buffer.len() {
+            return Err(Error::BufferOverrun(self.cursor, self.buffer.len()));
+        }
         let mut buf = [0u8; N];
         buf.copy_from_slice(&self.buffer[self.cursor..self.cursor+N]);
         self.cursor += N;
-        buf
+        Ok(buf)
     }
 
-    pub fn parse_buffer(&mut self, length: usize) -> &'a [u8] {
-        assert!(self.cursor+length <= self.buffer.len());
+    pub fn parse_buffer(&mut self, length: usize) -> Result<&'a [u8], Error> {
+        if self.cursor+length > self.buffer.len() {
+            return Err(Error::BufferOverrun(self.cursor, self.buffer.len()));
+        }
         let buf = &self.buffer[self.cursor..self.cursor+length];
         self.cursor += length;
-        buf
+        Ok(buf)
     }
 
-    pub fn get_buffer(&self, start: usize, length: usize) -> &'a [u8] {
-        assert!(start+length <= self.buffer.len());
-        &self.buffer[start..start+length]
-    }
-
-    pub fn parse_string(&mut self, length: usize) -> Result<String, FromUtf8Error> {
-        assert!(self.cursor+length <= self.buffer.len());
-        let s = String::from_utf8(self.buffer[self.cursor..self.cursor+length].to_vec());
-        if s.is_ok() {
-            self.cursor += length;
+    pub fn get_buffer(&self, start: usize, length: usize) -> Result<&'a [u8], Error> {
+        if start+length > self.buffer.len() {
+            return Err(Error::BufferOverrun(start, self.buffer.len()));
         }
-        s
+        Ok(&self.buffer[start..start+length])
+    }
+
+    pub fn parse_string(&mut self, length: usize) -> Result<String, Error> {
+        if self.cursor+length > self.buffer.len() {
+            return Err(Error::BufferOverrun(self.cursor, self.buffer.len()));
+        }
+        match String::from_utf8(self.buffer[self.cursor..self.cursor+length].to_vec()) {
+            Ok(s) => {
+                self.cursor += length;
+                Ok(s)
+            }
+            Err(e) => Err(Error::InvalidUTF8(e)),
+        }
     }
 
     pub fn parse_null_terminated_string(&mut self, length: ParsingLength) -> Result<String, Error> {
@@ -130,17 +147,19 @@ impl<'a> Binary<'a> {
                         self.cursor += max_pos + 1;
                         Ok(s)
                     }
-                    (Err(_), _) => Err(Error::InvalidUTF8),
+                    (Err(e), _) => Err(Error::InvalidUTF8(e)),
                 }
             }
         }
     }
 
-    pub fn parse_u8(&mut self) -> u8 {
-        assert!(self.cursor+1 <= self.buffer.len());
+    pub fn parse_u8(&mut self) -> Result<u8, Error> {
+        if self.cursor+1 > self.buffer.len() {
+            return Err(Error::BufferOverrun(self.cursor, self.buffer.len()));
+        }
         let x = self.buffer[self.cursor];
         self.cursor += 1;
-        x
+        Ok(x)
     }
 
     parse_impl!(le => parse_u16_le, u16);
@@ -188,8 +207,8 @@ mod tests {
     #[test]
     fn parsing_bytes() {
         let mut bin = binary!([0x4d, 0x45, 0x54, 0x41]);
-        assert_eq!(bin.parse_bytes::<2>(), [0x4d, 0x45]);
-        assert_eq!(bin.parse_bytes::<2>(), [0x54, 0x41]);
+        assert_eq!(bin.parse_bytes::<2>(), Ok([0x4d, 0x45]));
+        assert_eq!(bin.parse_bytes::<2>(), Ok([0x54, 0x41]));
     }
 
     #[test]
@@ -201,10 +220,10 @@ mod tests {
     #[test]
     fn parse_u8() {
         let mut bin = binary!([0x4d, 0x45, 0x54, 0x41]);
-        assert_eq!(bin.parse_u8(), 0x4d);
-        assert_eq!(bin.parse_u8(), 0x45);
-        assert_eq!(bin.parse_u8(), 0x54);
-        assert_eq!(bin.parse_u8(), 0x41);
+        assert_eq!(bin.parse_u8(), Ok(0x4d));
+        assert_eq!(bin.parse_u8(), Ok(0x45));
+        assert_eq!(bin.parse_u8(), Ok(0x54));
+        assert_eq!(bin.parse_u8(), Ok(0x41));
     }
 
     #[test]
